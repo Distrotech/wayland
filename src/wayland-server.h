@@ -98,8 +98,6 @@ void wl_display_remove_global(struct wl_display *display,
 
 struct wl_client *wl_client_create(struct wl_display *display, int fd);
 void wl_client_destroy(struct wl_client *client);
-void wl_client_post_error(struct wl_client *client, struct wl_object *object,
-			  uint32_t code, const char *msg, ...);
 void wl_client_post_no_memory(struct wl_client *client);
 void wl_client_flush(struct wl_client *client);
 
@@ -226,6 +224,9 @@ struct wl_selection {
 	struct wl_listener selection_focus_listener;
 };
 
+void
+wl_resource_post_error(struct wl_resource *resource,
+		       uint32_t code, const char *msg, ...);
 void
 wl_resource_post_event(struct wl_resource *resource, uint32_t opcode, ...);
 

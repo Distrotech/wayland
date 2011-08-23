@@ -514,9 +514,10 @@ emit_structs(struct wl_list *message_list, struct interface *interface)
 
 		n = strlen(m->name) + 17;
 		if (is_interface) {
-			printf("struct wl_client *client,\n"
-			       "%sstruct wl_resource *resource",
-			       indent(n));
+			printf("struct wl_resource *resource,\n"
+			       "%sstruct %s *%s",
+			       indent(n),
+			       interface->name, interface->name);
 		} else {
 			printf("void *data,\n"),
 			printf("%sstruct %s *%s",

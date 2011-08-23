@@ -58,17 +58,18 @@ destroy_buffer(struct wl_resource *resource)
 }
 
 static void
-shm_buffer_damage(struct wl_client *client, struct wl_resource *resource,
+shm_buffer_damage(struct wl_resource *resource, struct wl_buffer *base,
 		  int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	struct wl_shm_buffer *buffer = resource->data;
+	struct wl_shm_buffer *buffer =
+		container_of(base, struct wl_shm_buffer, buffer);
 
 	buffer->shm->callbacks->buffer_damaged(&buffer->buffer, x, y,
 					       width, height);
 }
 
 static void
-shm_buffer_destroy(struct wl_client *client, struct wl_resource *resource)
+shm_buffer_destroy(struct wl_resource *resource, struct wl_buffer *buffer)
 {
 	wl_resource_destroy(resource, 0);
 }
@@ -113,27 +114,26 @@ wl_shm_buffer_init(struct wl_shm *shm, struct wl_client *client, uint32_t id,
 }
 
 static void
-shm_create_buffer(struct wl_client *client, struct wl_resource *resource,
+shm_create_buffer(struct wl_resource *resource, struct wl_shm *shm,
 		  uint32_t id, int fd, int32_t width, int32_t height,
 		  uint32_t stride, struct wl_visual *visual)
 {
-	struct wl_shm *shm = resource->data;
 	struct wl_shm_buffer *buffer;
 	void *data;
 
 	if (!visual || visual->object.interface != &wl_visual_interface) {
-		wl_client_post_error(client, &resource->object,
-				     WL_SHM_ERROR_INVALID_VISUAL,
-				     "invalid visual");
+		wl_resource_post_error(resource,
+				       WL_SHM_ERROR_INVALID_VISUAL,
+				       "invalid visual");
 		close(fd);
 		return;
 	}
 
 	if (width < 0 || height < 0 || stride < width) {
-		wl_client_post_error(client, &resource->object,
-				     WL_SHM_ERROR_INVALID_STRIDE,
-				     "invalid width, height or stride (%dx%d, %u)",
-				     width, height, stride);
+		wl_resource_post_error(resource,
+				       WL_SHM_ERROR_INVALID_STRIDE,
+				       "invalid width, height or stride (%dx%d, %u)",
+				       width, height, stride);
 		close(fd);
 		return;
 	}
@@ -143,22 +143,21 @@ shm_create_buffer(struct wl_client *client, struct wl_resource *resource,
 
 	close(fd);
 	if (data == MAP_FAILED) {
-		wl_client_post_error(client, &resource->object,
-				     WL_SHM_ERROR_INVALID_FD,
-				     "failed mmap fd %d", fd);
+		wl_resource_post_error(resource,
+				       WL_SHM_ERROR_INVALID_FD,
+				       "failed mmap fd %d", fd);
 		return;
 	}
 
-	buffer = wl_shm_buffer_init(shm, client, id,
-				    width, height, stride, visual,
-				    data);
+	buffer = wl_shm_buffer_init(shm, resource->client, id,
+				    width, height, stride, visual, data);
 	if (buffer == NULL) {
 		munmap(data, stride * height);
-		wl_client_post_no_memory(client);
+		wl_client_post_no_memory(resource->client);
 		return;
 	}
 
-	wl_client_add_resource(client, &buffer->buffer.resource);
+	wl_client_add_resource(resource->client, &buffer->buffer.resource);
 }
 
 const static struct wl_shm_interface shm_interface = {

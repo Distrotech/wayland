@@ -108,8 +108,8 @@ wl_resource_post_event(struct wl_resource *resource, uint32_t opcode, ...)
 }
 
 WL_EXPORT void
-wl_client_post_error(struct wl_client *client, struct wl_object *object,
-		     uint32_t code, const char *msg, ...)
+wl_resource_post_error(struct wl_resource *resource,
+		       uint32_t code, const char *msg, ...)
 {
 	char buffer[128];
 	va_list ap;
@@ -118,8 +118,9 @@ wl_client_post_error(struct wl_client *client, struct wl_object *object,
 	vsnprintf(buffer, sizeof buffer, msg, ap);
 	va_end(ap);
 
-	wl_resource_post_event(client->display_resource,
-			       WL_DISPLAY_ERROR, object, code, buffer);
+	wl_resource_post_event(resource->client->display_resource,
+			       WL_DISPLAY_ERROR,
+			       &resource->object, code, buffer);
 }
 
 static int
@@ -155,9 +156,9 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 
 		resource = wl_map_lookup(&client->objects, p[0]);
 		if (resource == NULL) {
-			wl_client_post_error(client, &resource->object,
-					     WL_DISPLAY_ERROR_INVALID_OBJECT,
-					     "invalid object %d", p[0]);
+			wl_resource_post_error(resource,
+					       WL_DISPLAY_ERROR_INVALID_OBJECT,
+					       "invalid object %d", p[0]);
 			wl_connection_consume(connection, size);
 			len -= size;
 			continue;
@@ -165,11 +166,11 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 
 		object = &resource->object;
 		if (opcode >= object->interface->method_count) {
-			wl_client_post_error(client, &resource->object,
-					     WL_DISPLAY_ERROR_INVALID_METHOD,
-					     "invalid method %d, object %s@%d",
-					     object->interface->name,
-					     object->id, opcode);
+			wl_resource_post_error(resource,
+					       WL_DISPLAY_ERROR_INVALID_METHOD,
+					       "invalid method %d, object %s@%d",
+					       object->interface->name,
+					       object->id, opcode);
 			wl_connection_consume(connection, size);
 			len -= size;
 			continue;
@@ -181,12 +182,12 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 		len -= size;
 
 		if (closure == NULL && errno == EINVAL) {
-			wl_client_post_error(client, &resource->object,
-					     WL_DISPLAY_ERROR_INVALID_METHOD,
-					     "invalid arguments for %s@%d.%s",
-					     object->interface->name,
-					     object->id,
-					     message->name);
+			wl_resource_post_error(resource,
+					       WL_DISPLAY_ERROR_INVALID_METHOD,
+					       "invalid arguments for %s@%d.%s",
+					       object->interface->name,
+					       object->id,
+					       message->name);
 			continue;
 		} else if (closure == NULL && errno == ENOMEM) {
 			wl_client_post_no_memory(client);
@@ -197,8 +198,8 @@ wl_client_connection_data(int fd, uint32_t mask, void *data)
 		if (wl_debug)
 			wl_closure_print(closure, object, false); 
 
-		wl_closure_invoke(closure, object,
-				  object->implementation[opcode], client);
+		wl_closure_invoke(closure, resource->data,
+				  object->implementation[opcode], resource);
 
 		wl_closure_destroy(closure);
 	}
@@ -287,8 +288,8 @@ wl_client_add_resource(struct wl_client *client,
 WL_EXPORT void
 wl_client_post_no_memory(struct wl_client *client)
 {
-	wl_client_post_error(client, &client->display_resource->object,
-			     WL_DISPLAY_ERROR_NO_MEMORY, "no memory");
+	wl_resource_post_error(client->display_resource,
+			       WL_DISPLAY_ERROR_NO_MEMORY, "no memory");
 }
 
 static void
@@ -510,32 +511,31 @@ wl_input_device_update_grab(struct wl_input_device *device,
 }
 
 static void
-display_bind(struct wl_client *client,
-	     struct wl_resource *resource, uint32_t name,
+display_bind(struct wl_resource *resource,
+	     struct wl_display *display, uint32_t name,
 	     const char *interface, uint32_t version, uint32_t id)
 {
 	struct wl_global *global;
-	struct wl_display *display = resource->data;
 
 	wl_list_for_each(global, &display->global_list, link)
 		if (global->name == name)
 			break;
 
 	if (&global->link == &display->global_list)
-		wl_client_post_error(client, &resource->object,
-				     WL_DISPLAY_ERROR_INVALID_OBJECT,
-				     "invalid global %d", name);
+		wl_resource_post_error(resource,
+				       WL_DISPLAY_ERROR_INVALID_OBJECT,
+				       "invalid global %d", name);
 	else
-		global->bind(client, global->data, version, id);
+		global->bind(resource->client, global->data, version, id);
 }
 
 static void
-display_sync(struct wl_client *client,
-	     struct wl_resource *resource, uint32_t id)
+display_sync(struct wl_resource *resource,
+	     struct wl_display *display, uint32_t id)
 {
 	struct wl_resource *callback;
 
-	callback = wl_client_add_object(client,
+	callback = wl_client_add_object(resource->client,
 					&wl_callback_interface, NULL, id, NULL);
 	wl_resource_post_event(callback, WL_CALLBACK_DONE, 0);
 	wl_resource_destroy(callback, 0);
